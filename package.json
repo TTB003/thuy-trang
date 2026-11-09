@@ -1,0 +1,24 @@
+{
+  "name": "coffee-crm",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Hệ thống thông tin doanh nghiệp - CRM cho doanh nghiệp bán Coffee (đồ án HTTTDN)",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "init-db": "node scripts/init-db.js",
+    "seed": "node scripts/seed.js",
+    "seed:year-demo": "node scripts/seed-one-year-demo.js",
+    "repair:year-demo-accounts": "node scripts/repair-one-year-demo-accounts.js",
+    "prepare:year-demo": "node scripts/prepare-year-demo-for-presentation.js",
+    "xuat-sql": "node scripts/xuat-sql.js",
+    "kiem-tra": "node scripts/kiem-tra-api.js"
+  },
+  "engines": {
+    "node": ">=22.5.0"
+  },
+  "dependencies": {
+    "pg": "^8.23.1"
+  }
+}

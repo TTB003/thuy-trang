@@ -1,0 +1,30 @@
+﻿=== 1. ID TRONG index.html ─É╞»ß╗óC JavaScript TRUY Cß║¼P ===
+  [─Éß║áT] Tß║Ñt cß║ú id ─æß╗üu tß╗ôn tß║íi (26 tß╗çp JS, 28 id trong HTML).
+
+=== 2. KHß╗ÉI ─É─éNG NHß║¼P / ─É─éNG K├¥ TRONG HTML ===
+  [─Éß║áT] ─Éß╗º 10 id cß╗ºa khß╗æi ─æ─âng nhß║¡p/─æ─âng k├╜.
+  [─Éß║áT] C├│ thß║╗ chuyß╗ân chß║┐ ─æß╗Ö (role=tablist).
+  [─Éß║áT] C├│ thß║╗ ─É─âng nhß║¡p.
+  [─Éß║áT] C├│ thß║╗ ─É─âng k├╜.
+  [─Éß║áT] Biß╗âu mß║½u ─æ─âng k├╜ ß║⌐n l├║c ─æß║ºu.
+  [─Éß║áT] C├│ 3 d├▓ng quy tß║»c mß║¡t khß║⌐u (cß║ºn ΓëÑ 3).
+
+=== 3. Tß╗åP T─¿NH Mß╗ÜI ─É╞»ß╗óC PHß╗ñC Vß╗ñ QUA HTTP ===
+  [─Éß║áT] /css/style.css ΓÇö 200, 50327 byte, c├│ "cham-quy-tac".
+  [─Éß║áT] /js/mat-khau.js ΓÇö 200, 3136 byte, c├│ "QUY_TAC_MAT_KHAU".
+  [─Éß║áT] /js/thong-bao.js ΓÇö 200, 5653 byte, c├│ "taoChuongThongBao".
+  [─Éß║áT] /js/app.js ΓÇö 200, 16582 byte, c├│ "bieu-mau-dang-ky".
+  [─Éß║áT] /js/pages/cua-toi.js ΓÇö 200, 34901 byte, c├│ "uu-dai".
+
+=== 4. Lß╗ÜP CSS Mß╗ÜI V├Ç T├ìNH C├éN Bß║░NG ===
+  [─Éß║áT] ─Éß╗º 13 lß╗¢p CSS mß╗¢i.
+  [─Éß║áT] Dß║Ñu ngoß║╖c CSS c├ón bß║▒ng: 431 mß╗ƒ / 431 ─æ├│ng.
+
+=== 5. QUY Tß║«C Mß║¼T KHß║¿U: GIAO DIß╗åN KHß╗ÜP M├üY CHß╗ª ===
+  [─Éß║áT] 3 quy tß║»c trong mat-khau.js khß╗¢p 3 d├▓ng trong HTML; tß╗æi thiß╗âu 6 k├╜ tß╗▒.
+
+=== 6. QUY Tß║«C ß╗₧ M├üY CHß╗ª ===
+  [─Éß║áT] M├íy chß╗º c├│ 3 quy tß║»c, tß╗æi thiß╗âu 6 k├╜ tß╗▒ ΓÇö khß╗¢p giao diß╗çn.
+
+===== Tß╗öNG Kß║╛T: Tß║ñT Cß║ó ─Éß╗ÇU ─Éß║áT =====
+㴽‽䅍吠佈呁›ര

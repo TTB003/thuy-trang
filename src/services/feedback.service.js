@@ -1,0 +1,226 @@
+/**
+ * NGHIỆP VỤ NHÓM 10 — Quản lý phản hồi khách hàng (CN10.1 → CN10.4).
+ * Bảng: PHANHOI, KHACHHANG, NHANVIEN, SANPHAM.
+ */
+'use strict';
+
+const db = require('../db');
+const { ROLES } = require('../config');
+const { badRequest, notFound, conflict, forbidden } = require('../core/errors');
+const { requiredText, optionalText, requiredInt } = require('../core/validation');
+const { nowSql } = require('../core/time');
+const { FilterBuilder, parsePagination, paginate, executePaged } = require('../core/query');
+
+const SELECT_SQL = `
+  SELECT ph.maPH, ph.maKH, kh.hoTen AS tenKhachHang, kh.sdt AS sdtKhachHang,
+         ph.maNV, nv.hoTen AS tenNhanVien, ph.maSP, sp.tenSP,
+         ph.noiDung, ph.danhGia, ph.phanHoiLai, ph.trangThai, ph.ngayGui, ph.ngayXuLy
+    FROM PHANHOI ph
+    JOIN KHACHHANG kh ON kh.maKH = ph.maKH
+    LEFT JOIN NHANVIEN nv ON nv.maNV = ph.maNV
+    LEFT JOIN SANPHAM sp ON sp.maSP = ph.maSP`;
+const COUNT_SQL = `
+  SELECT COUNT(*) AS total
+    FROM PHANHOI ph
+    JOIN KHACHHANG kh ON kh.maKH = ph.maKH`;
+
+/**
+ * CN10.3 — Xem / lọc danh sách phản hồi.
+ * Khách hàng chỉ thấy phản hồi của chính mình.
+ */
+async function listPhanHoi(query = {}, user = null) {
+  const pagination = parsePagination(query);
+  const filter = new FilterBuilder()
+    .search(query.q, ['kh.hoTen', 'kh.sdt', 'ph.noiDung', 'ph.phanHoiLai', 'CAST(ph.danhGia AS TEXT)'])
+    .equals('ph.trangThai', query.trangThai ? optionalText(query.trangThai, 30) : null)
+    .equals('ph.maKH', query.maKH ? Number(query.maKH) : null)
+    .equals('ph.maNV', query.maNV ? Number(query.maNV) : null);
+
+  if (query.danhGia !== undefined && query.danhGia !== null && query.danhGia !== '') {
+    const danhGia = requiredInt(query.danhGia, 'Số sao', 1);
+    if (danhGia > 5) throw badRequest('Số sao phải nằm trong khoảng từ 1 đến 5.');
+    filter.equals('ph.danhGia', danhGia);
+  }
+
+  if (user?.vaiTro === ROLES.CUSTOMER) filter.equals('ph.maKH', user.maKH);
+  if (query.tuNgay) filter.raw('date(ph.ngayGui) >= date(:tuNgay)', { tuNgay: query.tuNgay });
+  if (query.denNgay) filter.raw('date(ph.ngayGui) <= date(:denNgay)', { denNgay: query.denNgay });
+
+  const { items, total } = await executePaged({
+    selectSql: SELECT_SQL,
+    countSql: COUNT_SQL,
+    filter,
+    orderBy: 'ORDER BY ph.ngayGui DESC, ph.maPH DESC',
+    pagination,
+    runAll: db.all,
+    runGet: db.get,
+  });
+  return paginate(items, total, pagination);
+}
+
+/** Lấy chi tiết một phản hồi. */
+async function getPhanHoi(maPH, user = null) {
+  const row = await db.get(`${SELECT_SQL} WHERE ph.maPH = :maPH`, { maPH });
+  if (!row) throw notFound(`Không tìm thấy phản hồi có mã ${maPH}.`);
+  if (user?.vaiTro === ROLES.CUSTOMER && Number(row.maKH) !== Number(user.maKH)) {
+    throw notFound(`Không tìm thấy phản hồi có mã ${maPH}.`);
+  }
+  return row;
+}
+
+/** CN10.1 — Khách hàng gửi phản hồi / đánh giá. */
+async function createPhanHoi(payload, user = null) {
+  const laKhachHang = user?.vaiTro === ROLES.CUSTOMER;
+  const maKH = laKhachHang ? Number(user.maKH) : requiredInt(payload.maKH, 'Khách hàng', 1);
+  const khachHang = await db.get(
+    'SELECT maKH, hoTen, trangThai FROM KHACHHANG WHERE maKH = :maKH',
+    { maKH }
+  );
+  if (!khachHang) throw badRequest(`Khách hàng có mã ${maKH} không tồn tại.`);
+  if (khachHang.trangThai !== 'Hoạt động') {
+    throw conflict(
+      `Khách hàng đang ở trạng thái "${khachHang.trangThai}", không thể gửi phản hồi.`
+    );
+  }
+  const noiDung = requiredText(payload.noiDung, 'Nội dung phản hồi', 1000);
+  const danhGia = requiredInt(payload.danhGia, 'Đánh giá (số sao)', 1);
+  if (danhGia > 5) throw badRequest('Đánh giá chỉ nhận giá trị từ 1 đến 5 sao.');
+  const maSP = payload.maSP ? Number(payload.maSP) : null;
+  if (payload.maDH !== undefined && payload.maDH !== null && payload.maDH !== '') {
+    if (!laKhachHang || !maSP) throw badRequest('Đánh giá theo đơn hàng cần tài khoản khách và sản phẩm cụ thể.');
+    const donHang = await db.get(
+      'SELECT maDH, trangThai FROM DONHANG WHERE maDH = :maDH AND maKH = :maKH',
+      { maDH: requiredInt(payload.maDH, 'Đơn hàng', 1), maKH }
+    );
+    if (!donHang || donHang.trangThai !== 'Hoàn thành') {
+      throw badRequest('Chỉ có thể đánh giá đơn hàng đã hoàn thành của bạn.');
+    }
+    const sanPhamTrongDon = await db.get(
+      'SELECT maSP FROM CHITIETDONHANG WHERE maDH = :maDH AND maSP = :maSP',
+      { maDH: donHang.maDH, maSP }
+    );
+    if (!sanPhamTrongDon) throw badRequest('Sản phẩm được chọn không thuộc đơn hàng này.');
+  }
+  if (maSP) {
+    const sanPham = await db.get('SELECT maSP FROM SANPHAM WHERE maSP = :maSP', { maSP });
+    if (!sanPham) throw badRequest(`Sản phẩm có mã ${maSP} không tồn tại.`);
+  }
+
+  const result = await db.run(
+    `INSERT INTO PHANHOI (maKH, maNV, maSP, noiDung, danhGia, trangThai, ngayGui)
+     VALUES (:maKH, NULL, :maSP, :noiDung, :danhGia, N'Chờ xử lý', :ngayGui)`,
+    { maKH, maSP, noiDung, danhGia, ngayGui: nowSql() }
+  );
+  const phanHoi = await getPhanHoi(result.lastInsertRowid);
+  return { ...phanHoi, thongBao: 'Cảm ơn bạn đã gửi phản hồi. Chúng tôi sẽ sớm liên hệ lại.' };
+}
+
+/** Customer may edit only the rating and text of their own feedback. */
+async function updatePhanHoiCuaKhach(maPH, payload, user) {
+  if (user?.vaiTro !== ROLES.CUSTOMER) throw forbidden('Chỉ khách hàng mới được sửa phản hồi của mình.');
+  const current = await getPhanHoi(maPH, user);
+  const noiDung = requiredText(payload.noiDung, 'Nội dung phản hồi', 1000);
+  const danhGia = requiredInt(payload.danhGia, 'Đánh giá (số sao)', 1);
+  if (danhGia > 5) throw badRequest('Đánh giá chỉ nhận giá trị từ 1 đến 5 sao.');
+  await db.run(
+    'UPDATE PHANHOI SET noiDung = :noiDung, danhGia = :danhGia WHERE maPH = :maPH AND maKH = :maKH',
+    { noiDung, danhGia, maPH: current.maPH, maKH: user.maKH }
+  );
+  return getPhanHoi(current.maPH, user);
+}
+
+/**
+ * CN10.2 — Nhân viên tiếp nhận và xử lý phản hồi.
+ * Gán nhân viên xử lý, ghi nội dung trả lời và đánh dấu đã xử lý.
+ */
+async function xuLyPhanHoi(maPH, payload, user) {
+  const current = await getPhanHoi(maPH);
+  if (!user?.maNV) throw forbidden('Chức năng trả lời phản hồi dành cho nhân viên phụ trách.');
+  if (current.maNV && Number(current.maNV) !== Number(user.maNV)) {
+    throw forbidden('Bạn chỉ được sửa nội dung phản hồi cửa hàng do chính mình xử lý.');
+  }
+  const maNV = requiredInt(user.maNV, 'Nhân viên xử lý', 1);
+  const nhanVien = await db.get('SELECT maNV, hoTen FROM NHANVIEN WHERE maNV = :maNV', { maNV });
+  if (!nhanVien) throw badRequest(`Nhân viên có mã ${maNV} không tồn tại.`);
+  const phanHoiLai = requiredText(payload.phanHoiLai, 'Nội dung phản hồi lại', 1000);
+
+  await db.run(
+    `UPDATE PHANHOI
+        SET maNV = :maNV, phanHoiLai = :phanHoiLai, trangThai = N'Đã xử lý', ngayXuLy = :ngayXuLy
+      WHERE maPH = :maPH`,
+    { maNV, phanHoiLai, ngayXuLy: nowSql(), maPH: current.maPH }
+  );
+  return getPhanHoi(current.maPH);
+}
+
+/** CN10.4 — Thống kê mức độ hài lòng theo khoảng thời gian. */
+async function thongKeHaiLong(query = {}) {
+  const filter = new FilterBuilder();
+  if (query.tuNgay) filter.raw('date(ph.ngayGui) >= date(:tuNgay)', { tuNgay: query.tuNgay });
+  if (query.denNgay) filter.raw('date(ph.ngayGui) <= date(:denNgay)', { denNgay: query.denNgay });
+  const { sql: whereSql, params } = filter.toWhere();
+
+  const tongQuan = await db.get(
+    `SELECT COUNT(*) AS tongPhanHoi,
+            ROUND(AVG(ph.danhGia), 2) AS diemTrungBinh,
+            SUM(CASE WHEN ph.trangThai = N'Chờ xử lý' THEN 1 ELSE 0 END) AS chuaXuLy,
+            SUM(CASE WHEN ph.trangThai = N'Đã xử lý' THEN 1 ELSE 0 END) AS daXuLy
+       FROM PHANHOI ph ${whereSql}`,
+    params
+  );
+
+  const theoSoSao = await db.all(
+    `SELECT ph.danhGia, COUNT(*) AS soLuong
+       FROM PHANHOI ph ${whereSql}
+      GROUP BY ph.danhGia
+      ORDER BY ph.danhGia DESC`,
+    params
+  );
+
+  const tongPhanHoi = Number(tongQuan?.tongPhanHoi ?? 0);
+  const phanBo = [5, 4, 3, 2, 1].map((sao) => {
+    const found = theoSoSao.find((row) => Number(row.danhGia) === sao);
+    const soLuong = Number(found?.soLuong ?? 0);
+    return {
+      danhGia: sao,
+      soLuong,
+      tyLe: tongPhanHoi > 0 ? Math.round((soLuong / tongPhanHoi) * 1000) / 10 : 0,
+    };
+  });
+
+  const theoSanPham = await db.all(
+    `SELECT sp.maSP, sp.tenSP, COUNT(*) AS soPhanHoi, ROUND(AVG(ph.danhGia), 2) AS diemTrungBinh
+       FROM PHANHOI ph
+       JOIN SANPHAM sp ON sp.maSP = ph.maSP
+       ${whereSql ? `${whereSql} AND` : 'WHERE'} ph.maSP IS NOT NULL
+      GROUP BY sp.maSP, sp.tenSP
+      ORDER BY diemTrungBinh DESC`,
+    params
+  );
+
+  return {
+    tongQuan: {
+      tongPhanHoi,
+      diemTrungBinh: Number(tongQuan?.diemTrungBinh ?? 0),
+      chuaXuLy: Number(tongQuan?.chuaXuLy ?? 0),
+      daXuLy: Number(tongQuan?.daXuLy ?? 0),
+    },
+    phanBo,
+    theoSanPham,
+  };
+}
+
+/** Đếm số phản hồi chưa xử lý (dùng cho huy hiệu thông báo trên giao diện). */
+async function demPhanHoiChuaXuLy() {
+  return Number(await db.scalar(`SELECT COUNT(*) FROM PHANHOI WHERE trangThai = N'Chờ xử lý'`));
+}
+
+module.exports = {
+  listPhanHoi,
+  getPhanHoi,
+  createPhanHoi,
+  updatePhanHoiCuaKhach,
+  xuLyPhanHoi,
+  thongKeHaiLong,
+  demPhanHoiChuaXuLy,
+};

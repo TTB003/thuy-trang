@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Coffee👓uoHP</string>
+    <string name="title_activity_main">Coffee👓uoHP</string>
+    <string name="package_name">vn.edu.sgu.coffeecrm</string>
+    <string name="custom_url_scheme">vn.edu.sgu.coffeecrm</string>
+</resources>

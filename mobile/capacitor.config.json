@@ -1,0 +1,8 @@
+{
+  "appId": "vn.edu.sgu.coffeecrm",
+  "appName": "Coffee👓uoHP",
+  "webDir": "www",
+  "server": {
+    "cleartext": false
+  }
+}

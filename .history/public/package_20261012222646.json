@@ -1,0 +1,6 @@
+{
+  "name": "coffee-crm-frontend",
+  "private": true,
+  "type": "module",
+  "description": "Chỉ dùng cho công cụ kiểm tra cú pháp phía máy chủ. Trình duyệt không cần tệp này; nó giúp Node hiểu các tệp .js trong public/ là ES module."
+}

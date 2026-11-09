@@ -1,0 +1,252 @@
+/**
+ * Xác thực (đăng nhập/đăng xuất) và phân quyền theo vai trò — CN4.5.
+ * Vai trò: Admin | Quản lý | Nhân viên | Khách hàng.
+ */
+'use strict';
+
+const db = require('../db');
+const { config, ROLES } = require('../config');
+const { hashPassword, verifyPassword, generateToken } = require('./security');
+const { unauthorized, forbidden, badRequest } = require('./errors');
+const { nowSql, hoursFromNow, parseSqlDateTime } = require('./time');
+
+/**
+ * Ma trận phân quyền: mỗi vai trò được cấp một tập "quyền" (capability).
+ * Các route chỉ cần khai báo quyền, không cần kiểm tra vai trò thủ công.
+ */
+const CAPABILITIES = {
+  [ROLES.ADMIN]: [
+    'system.account.view',
+    'system.account.manage',
+    'system.backup',
+    'catalog.view',
+    'catalog.manage',
+    'employee.view',
+    'employee.manage',
+    'customer.view',
+    'customer.manage',
+    'purchase.view',
+    'purchase.manage',
+    'order.view.all',
+    'order.manage',
+    'loyalty.manage',
+    'promotion.view',
+    'promotion.manage',
+    'feedback.view',
+    'feedback.handle',
+    'survey.view',
+    'survey.manage',
+    'report.view',
+  ],
+  [ROLES.MANAGER]: [
+    'catalog.view',
+    'catalog.manage',
+    'employee.view',
+    'employee.manage',
+    'customer.view',
+    'customer.manage',
+    'purchase.view',
+    'purchase.manage',
+    'order.view.all',
+    'order.manage',
+    'loyalty.manage',
+    'promotion.view',
+    'promotion.manage',
+    'feedback.view',
+    'feedback.handle',
+    'survey.view',
+    'survey.manage',
+    'report.view',
+  ],
+  [ROLES.STAFF]: [
+    'catalog.view',
+    'customer.view',
+    'customer.manage',
+    'purchase.view',
+    'purchase.manage',
+    'order.view.all',
+    'order.manage',
+    'loyalty.manage',
+    'promotion.view',
+    'feedback.view',
+    'feedback.handle',
+    'survey.view',
+    'survey.manage',
+    'report.inventory',
+  ],
+  [ROLES.CUSTOMER]: ['self.profile', 'self.order', 'self.feedback', 'self.survey', 'catalog.view'],
+};
+
+/** Kiểm tra vai trò có quyền cụ thể hay không. */
+function hasCapability(user, capability) {
+  if (!user) return false;
+  const granted = CAPABILITIES[user.vaiTro] || [];
+  return granted.includes(capability);
+}
+
+/** Ném lỗi 403 nếu vai trò không có quyền. */
+function assertCapability(user, capability) {
+  if (!hasCapability(user, capability)) {
+    throw forbidden('Bạn không có quyền thực hiện chức năng này.');
+  }
+}
+
+/** Chỉ cho phép vai trò Admin (mục II — giao diện ADMIN tách biệt). */
+function assertAdmin(user) {
+  if (!user || user.vaiTro !== ROLES.ADMIN) {
+    throw forbidden('Chức năng này chỉ dành cho quản trị viên (Admin).');
+  }
+}
+
+/** Là tài khoản nội bộ (Admin / Quản lý / Nhân viên). */
+function isInternalUser(user) {
+  return Boolean(user) && user.vaiTro !== ROLES.CUSTOMER;
+}
+
+/** Xóa các phiên đã hết hạn. */
+function purgeExpiredSessions() {
+  db.run('DELETE FROM PHIENDANGNHAP WHERE hetHan < :now', { now: nowSql() });
+}
+
+/**
+ * Đăng nhập bằng tên đăng nhập (email hoặc số điện thoại) + mật khẩu.
+ * @returns {{ token: string, user: object }}
+ */
+function login(tenDangNhap, matKhau) {
+  const ten = String(tenDangNhap || '').trim();
+  const pass = String(matKhau || '');
+  if (!ten || !pass) throw badRequest('Vui lòng nhập tên đăng nhập và mật khẩu.');
+
+  const account = db.get(
+    `SELECT tk.maTK, tk.tenDangNhap, tk.matKhau, tk.vaiTro, tk.maNV, tk.maKH, tk.trangThai,
+            nv.hoTen AS hoTenNV, nv.chucVu AS chucVu, nv.email AS emailNV,
+            kh.hoTen AS hoTenKH, kh.trangThai AS trangThaiKH, kh.email AS emailKH
+       FROM TAIKHOAN tk
+       LEFT JOIN NHANVIEN nv ON nv.maNV = tk.maNV
+       LEFT JOIN KHACHHANG kh ON kh.maKH = tk.maKH
+      WHERE tk.tenDangNhap = :ten`,
+    { ten }
+  );
+
+  if (!account || !verifyPassword(pass, account.matKhau)) {
+    throw unauthorized('Tên đăng nhập hoặc mật khẩu không đúng.');
+  }
+  if (account.trangThai === 'Bị khóa') {
+    throw forbidden('Tài khoản của bạn đã bị khóa. Vui lòng liên hệ quản trị viên.');
+  }
+  if (account.vaiTro !== ROLES.ADMIN && account.trangThaiKH === 'Bị khóa') {
+    throw forbidden('Tài khoản khách hàng của bạn đang bị khóa.');
+  }
+
+  purgeExpiredSessions();
+  const token = generateToken();
+  db.run(
+    `INSERT INTO PHIENDANGNHAP (token, maTK, ngayTao, hetHan)
+     VALUES (:token, :maTK, :ngayTao, :hetHan)`,
+    {
+      token,
+      maTK: account.maTK,
+      ngayTao: nowSql(),
+      hetHan: hoursFromNow(config.sessionHours),
+    }
+  );
+  db.run('UPDATE TAIKHOAN SET lanDangNhapCuoi = :now WHERE maTK = :maTK', {
+    now: nowSql(),
+    maTK: account.maTK,
+  });
+
+  return { token, user: toUserContext(account) };
+}
+
+/** Chuẩn hóa bản ghi tài khoản thành đối tượng người dùng dùng cho phiên. */
+function toUserContext(account) {
+  const isCustomer = account.vaiTro === ROLES.CUSTOMER;
+  return {
+    maTK: account.maTK,
+    tenDangNhap: account.tenDangNhap,
+    vaiTro: account.vaiTro,
+    maNV: account.maNV ?? null,
+    maKH: account.maKH ?? null,
+    hoTen: isCustomer ? account.hoTenKH || '' : account.hoTenNV || 'Quản trị hệ thống',
+    chucVu: isCustomer ? null : account.chucVu || null,
+    email: isCustomer ? account.emailKH || null : account.emailNV || null,
+    capabilities: CAPABILITIES[account.vaiTro] || [],
+  };
+}
+
+/** Đăng xuất — hủy phiên hiện tại. */
+function logout(token) {
+  if (!token) return;
+  db.run('DELETE FROM PHIENDANGNHAP WHERE token = :token', { token });
+}
+
+/**
+ * Lấy người dùng từ token phiên. Trả null nếu token sai/hết hạn.
+ * @returns {object|null}
+ */
+function resolveUser(token) {
+  if (!token) return null;
+  const row = db.get(
+    `SELECT tk.maTK, tk.tenDangNhap, tk.vaiTro, tk.maNV, tk.maKH, tk.trangThai,
+            p.hetHan,
+            nv.hoTen AS hoTenNV, nv.chucVu AS chucVu, nv.email AS emailNV,
+            kh.hoTen AS hoTenKH, kh.trangThai AS trangThaiKH, kh.email AS emailKH
+       FROM PHIENDANGNHAP p
+       JOIN TAIKHOAN tk ON tk.maTK = p.maTK
+       LEFT JOIN NHANVIEN nv ON nv.maNV = tk.maNV
+       LEFT JOIN KHACHHANG kh ON kh.maKH = tk.maKH
+      WHERE p.token = :token`,
+    { token }
+  );
+  if (!row) return null;
+
+  const expired = parseSqlDateTime(row.hetHan);
+  if (!expired || expired.getTime() < Date.now()) {
+    db.run('DELETE FROM PHIENDANGNHAP WHERE token = :token', { token });
+    return null;
+  }
+  if (row.trangThai === 'Bị khóa') return null;
+  return toUserContext(row);
+}
+
+/** Tạo tài khoản mới (dùng cho Admin, đăng ký khách hàng, tạo nhân viên). */
+function createAccount({ tenDangNhap, matKhau, vaiTro, maNV = null, maKH = null }) {
+  const existed = db.get('SELECT maTK FROM TAIKHOAN WHERE tenDangNhap = :ten', { ten: tenDangNhap });
+  if (existed) throw badRequest(`Tên đăng nhập "${tenDangNhap}" đã được sử dụng.`);
+  const result = db.run(
+    `INSERT INTO TAIKHOAN (tenDangNhap, matKhau, vaiTro, maNV, maKH, trangThai, ngayTao)
+     VALUES (:tenDangNhap, :matKhau, :vaiTro, :maNV, :maKH, 'Hoạt động', :ngayTao)`,
+    {
+      tenDangNhap,
+      matKhau: hashPassword(matKhau),
+      vaiTro,
+      maNV,
+      maKH,
+      ngayTao: nowSql(),
+    }
+  );
+  return result.lastInsertRowid;
+}
+
+/** Đổi mật khẩu tài khoản. */
+function changePassword(maTK, matKhauMoi) {
+  db.run('UPDATE TAIKHOAN SET matKhau = :matKhau WHERE maTK = :maTK', {
+    matKhau: hashPassword(matKhauMoi),
+    maTK,
+  });
+  db.run('DELETE FROM PHIENDANGNHAP WHERE maTK = :maTK', { maTK });
+}
+
+module.exports = {
+  CAPABILITIES,
+  hasCapability,
+  assertCapability,
+  assertAdmin,
+  isInternalUser,
+  login,
+  logout,
+  resolveUser,
+  createAccount,
+  changePassword,
+  purgeExpiredSessions,
+};

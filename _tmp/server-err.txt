@@ -1,0 +1,2 @@
+[CSDL] Cột "count" chưa có trong bảng ánh xạ tên cột.
+[CSDL] Cột "?column?" chưa có trong bảng ánh xạ tên cột.

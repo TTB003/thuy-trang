@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Coffee — Quản trị doanh nghiệp</title>
+  <meta name="description" content="Hệ thống thông tin doanh nghiệp — quản lý bán hàng, khách hàng và chăm sóc khách hàng cho doanh nghiệp bán Coffee.">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/css/style.css?v=20261108-4">
+</head>
+<body>
+
+<!-- ==================== MÀN HÌNH ĐĂNG NHẬP ==================== -->
+<div id="man-hinh-dang-nhap" class="khung-dang-nhap" hidden>
+  <div class="dang-nhap-chia-doi">
+    <section class="dang-nhap-gioi-thieu">
+      <div class="gioi-thieu-noi-dung">
+        <div class="gioi-thieu-logo"></div>
+        <h1>Cà phê & Khách hàng</h1>
+        <p>
+          Hệ thống thông tin doanh nghiệp quản lý bán hàng, kho, khách hàng,
+          khuyến mãi, khảo sát và báo cáo cho chuỗi cửa hàng coffee.
+        </p>
+        <ul class="gioi-thieu-danh-sach">
+          <li>Quản lý sản phẩm, tồn kho và nhà cung cấp</li>
+          <li>Theo dõi đơn hàng, phiếu nhập và điểm tích lũy</li>
+          <li>Chăm sóc khách hàng bằng phản hồi và khảo sát</li>
+          <li>Báo cáo doanh thu, tồn kho và khách hàng thân thiết</li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="dang-nhap-bieu-mau">
+      <div class="the-dang-nhap">
+        <div class="chon-che-do" role="tablist" aria-label="Chọn đăng nhập hoặc đăng ký">
+          <button type="button" class="muc-che-do dang-chon" data-che-do="dang-nhap" role="tab"
+                  aria-selected="true">Đăng nhập</button>
+          <button type="button" class="muc-che-do" data-che-do="dang-ky" role="tab"
+                  aria-selected="false">Đăng ký</button>
+        </div>
+
+      <form id="bieu-mau-dang-nhap" class="bieu-mau-tai-khoan" autocomplete="on" novalidate>
+        <h2>Đăng nhập hệ thống</h2>
+        <p class="phu-de">Sử dụng tài khoản được cấp để truy cập.</p>
+
+        <label class="truong" for="ten-dang-nhap">
+          <span>Tên đăng nhập</span>
+          <input id="ten-dang-nhap" name="tenDangNhap" type="text" required
+                 placeholder="Email nhân viên hoặc số điện thoại khách hàng" autocomplete="username">
+        </label>
+
+        <label class="truong" for="mat-khau">
+          <span>Mật khẩu</span>
+          <input id="mat-khau" name="matKhau" type="password" required
+                 placeholder="Nhập mật khẩu" autocomplete="current-password">
+        </label>
+
+        <p id="loi-dang-nhap" class="loi-dang-nhap" hidden></p>
+
+        <button id="nut-dang-nhap" class="nut nut-chinh nut-rong" type="submit">
+          <span class="nhan-nut">Đăng nhập</span>
+        </button>
+
+        <div class="tai-khoan-goi-y">
+          <p class="nhan-goi-y">Tài khoản dùng thử</p>
+          <div class="danh-sach-goi-y">
+            <button type="button" class="the-goi-y" data-dien="an.nv@coffeecrm.vn|Coffee@123">
+              <strong>Quản lý</strong><span>an.nv@coffeecrm.vn</span>
+            </button>
+            <button type="button" class="the-goi-y" data-dien="bich.tt@coffeecrm.vn|Coffee@123">
+              <strong>Nhân viên</strong><span>bich.tt@coffeecrm.vn</span>
+            </button>
+            <button type="button" class="the-goi-y" data-dien="0912000001|Khach@123">
+              <strong>Khách hàng</strong><span>0912000001</span>
+            </button>
+          </div>
+        </div>
+      </form>
+
+      <form id="bieu-mau-dang-ky" class="bieu-mau-tai-khoan" autocomplete="on" novalidate hidden>
+        <h2>Tạo tài khoản khách hàng</h2>
+        <p class="phu-de">Số điện thoại sẽ là tên đăng nhập của bạn.</p>
+
+        <label class="truong" for="dk-ho-ten">
+          <span>Họ và tên</span>
+          <input id="dk-ho-ten" name="hoTen" type="text" required maxlength="100"
+                 placeholder="Ví dụ: Nguyễn Thị Mai" autocomplete="name">
+        </label>
+
+        <label class="truong" for="dk-sdt">
+          <span>Số điện thoại</span>
+          <input id="dk-sdt" name="sdt" type="tel" required maxlength="15"
+                 placeholder="Ví dụ: 0912345678" autocomplete="tel">
+        </label>
+
+        <label class="truong" for="dk-gioi-tinh">
+          <span>Giới tính</span>
+          <select id="dk-gioi-tinh" name="gioiTinh" required>
+            <option value="">— Chọn giới tính —</option>
+            <option value="Nam">Nam</option>
+            <option value="Nữ">Nữ</option>
+            <option value="Khác">Khác</option>
+          </select>
+        </label>
+
+        <label class="truong" for="dk-mat-khau">
+          <span>Mật khẩu</span>
+          <input id="dk-mat-khau" name="matKhau" type="password" required
+                 placeholder="Ít nhất 6 ký tự" autocomplete="new-password">
+        </label>
+
+        <ul class="danh-sach-quy-tac" id="quy-tac-mat-khau" aria-live="polite">
+          <li data-quy-tac="doDai"><span class="cham-quy-tac"></span>Có ít nhất 6 ký tự</li>
+          <li data-quy-tac="chuHoa"><span class="cham-quy-tac"></span>Có ít nhất 1 chữ in hoa</li>
+          <li data-quy-tac="dacBiet"><span class="cham-quy-tac"></span>Có ít nhất 1 ký tự đặc biệt</li>
+        </ul>
+
+        <label class="truong" for="dk-nhap-lai">
+          <span>Nhập lại mật khẩu</span>
+          <input id="dk-nhap-lai" name="xacNhanMatKhau" type="password" required
+                 placeholder="Nhập lại mật khẩu vừa tạo" autocomplete="new-password">
+        </label>
+        <p id="loi-nhap-lai-mat-khau" class="loi-xac-nhan-mat-khau" aria-live="polite" hidden></p>
+
+        <p id="loi-dang-ky" class="loi-dang-nhap" hidden></p>
+
+        <button id="nut-dang-ky" class="nut nut-chinh nut-rong" type="submit">
+          <span class="nhan-nut">Đăng ký</span>
+        </button>
+
+        <p class="goi-y-dang-ky">
+          Đăng ký để theo dõi đơn hàng, điểm tích lũy và nhận phiếu giảm giá
+          <strong>50% cho 1 ly vào đúng ngày sinh nhật</strong> (điền ngày sinh trong mục Hồ sơ của tôi).
+        </p>
+      </form>
+      </div>
+    </section>
+  </div>
+</div>
+
+<!-- ==================== KHUNG ỨNG DỤNG ==================== -->
+<div id="khung-ung-dung" class="khung-ung-dung" hidden>
+  <button id="nut-mo-thanh-ben" class="nut-mo-thanh-ben" type="button" aria-label="Mở thanh điều hướng"></button>
+  <div id="lop-phu-thanh-ben" class="lop-phu-thanh-ben" hidden></div>
+
+  <aside class="thanh-ben" id="thanh-ben">
+    <div class="thanh-ben-dau">
+      <div class="thuong-hieu">
+        <span class="thuong-hieu-logo" aria-hidden="true"></span>
+        <span class="thuong-hieu-chu">
+          <strong class="thuong-hieu-ten">Coffee <span class="thuong-hieu-dau-hieu" aria-label="Kính uoHP"><span class="dau-hieu-kinh">👓</span>uoHP</span></strong>
+          <small>Quản trị doanh nghiệp</small>
+        </span>
+      </div>
+    </div>
+
+    <nav class="dieu-huong" id="dieu-huong" aria-label="Điều hướng chính"></nav>
+
+    <div class="thanh-ben-cuoi">
+      <div class="nhan-ban" id="nhan-ban-he-thong"></div>
+    </div>
+  </aside>
+
+  <div class="khu-chinh">
+    <header class="thanh-tren">
+      <div class="thanh-tren-trai">
+        <h1 id="tieu-de-trang">Tổng quan</h1>
+        <p id="mo-ta-trang"></p>
+      </div>
+      <div class="thanh-tren-phai">
+        <div class="nguoi-dung" id="thong-tin-nguoi-dung"></div>
+      </div>
+    </header>
+
+    <main class="noi-dung" id="noi-dung" tabindex="-1"></main>
+
+    <footer class="chan-trang">
+      <span class="chan-trang-thuong-hieu">Hệ thống thông tin doanh nghiệp — <span aria-label="Kính uoHP"><span class="dau-hieu-kinh">👓</span>uoHP</span> cho doanh nghiệp bán Coffee</span>
+      <span id="chan-trang-csdl"></span>
+    </footer>
+  </div>
+</div>
+
+<!-- ==================== LỚP PHỦ DÙNG CHUNG ==================== -->
+<div id="khu-thong-bao" class="khu-thong-bao" aria-live="polite" aria-atomic="true"></div>
+<div id="khu-hop-thoai" class="khu-hop-thoai"></div>
+<div id="lop-tai" class="lop-tai" role="status" aria-label="Đang khôi phục phiên đăng nhập"><div class="vong-xoay"></div></div>
+
+<script src="/mobile-config.js"></script>
+<script type="module" src="/js/app.js?v=20261108-4"></script>
+</body>
+</html>

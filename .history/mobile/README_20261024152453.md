@@ -1,0 +1,44 @@
+# Coffee CRM Mobile
+
+## Hướng triển khai
+
+Ứng dụng Android dùng **Capacitor + JavaScript**, đặt mã nguồn trong thư mục `mobile/`. APK đóng gói giao diện Coffee CRM vào trong ứng dụng; khi cài app, người dùng thao tác ở các màn hình của app, không bị chuyển sang trình duyệt hoặc mở website bên ngoài. Các vai trò và nghiệp vụ dùng chung API và dữ liệu PostgreSQL của hệ thống.
+
+## Kết nối máy chủ
+
+Ứng dụng cần truy cập được máy chủ Coffee CRM. Không dùng `localhost` trên điện thoại để trỏ tới máy tính; khi thử cùng Wi-Fi cần dùng IP nội bộ của máy tính. Khi cài đặt ngoài mạng nội bộ cần máy chủ có domain/IP truy cập được.
+
+App gọi API qua địa chỉ máy chủ cấu hình lúc build và dùng token phiên Bearer. Máy chủ chỉ mở CORS cho origin cục bộ của Capacitor. Không đưa mật khẩu PostgreSQL vào APK. Bản thử Wi-Fi có thể dùng HTTP, nhưng bản dùng ngoài mạng nên dùng HTTPS.
+
+## Phạm vi ứng dụng
+
+- Khách hàng: các chức năng mua hàng, giỏ hàng, đơn hàng, ưu đãi, điểm thưởng, khảo sát, phản hồi và hồ sơ.
+- Nhân viên: chức năng theo chức vụ được cấp.
+- Quản lý và quản trị: chức năng theo quyền hiện có trên web.
+
+## Build thử APK trên Windows
+
+1. Cài Android Studio và Android SDK (API 24 trở lên), rồi mở terminal tại thư mục `mobile`.
+2. Mở terminal thứ nhất ở thư mục dự án và cho server lắng nghe trên mạng nội bộ:
+
+   ```powershell
+   $env:HOST = '0.0.0.0'
+   node server.js
+   ```
+
+3. Chọn IPv4 máy tính mà điện thoại truy cập được. Ví dụ PowerShell khi thử cùng Wi-Fi:
+
+   ```powershell
+   $env:COFFEE_CRM_SERVER_URL = 'http://192.168.100.164:3000'
+   npm.cmd run android:apk
+   ```
+
+4. APK debug được tạo tại `mobile/android/app/build/outputs/apk/debug/app-debug.apk`.
+
+`android:apk` tự đóng gói lại giao diện trong `public/` rồi đồng bộ Android. Để tạo project Android lần đầu, chạy `npm.cmd run android:add`. Capacitor 8 cần Node.js 22 trở lên và Android Studio/SDK. Địa chỉ IP ví dụ phải thay bằng IP thật của máy chạy server.
+
+## Trạng thái
+
+Đã build APK debug. App chứa các màn hình hiện có trong `public/`, có đăng nhập khách hàng, nhân viên, quản lý và Admin; quyền vẫn được máy chủ kiểm tra qua API. APK debug cần máy chủ đang chạy và điện thoại truy cập được địa chỉ server đã cấu hình khi build.
+
+//ngrok http 3000

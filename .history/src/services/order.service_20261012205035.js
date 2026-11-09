@@ -1,0 +1,156 @@
+/**
+ * NGHIỆP VỤ NHÓM 7 — Quản lý đơn hàng (CN7.1 → CN7.5).
+ * Mọi thao tác thay đổi nhiều bảng đều nằm trong một transaction.
+ * Bảng: DONHANG, CHITIETDONHANG, SANPHAM, KHACHHANG, LICHSUDIEM, CTKM, KHUYENMAI.
+ */
+'use strict';
+
+const db = require('../db');
+const productService = require('./product.service');
+const loyaltyService = require('./loyalty.service');
+const { ROLES, LUONG_DON_HANG, TRANG_THAI_DH, HINH_THUC_DH } = require('../config');
+const { badRequest, notFound, conflict } = require('../core/errors');
+const { requiredInt, optionalText, oneOf, asArray } = require('../core/validation');
+const { nowSql } = require('../core/time');
+const { FilterBuilder, parsePagination, paginate, executePaged, buildOrderBy } = require('../core/query');
+
+const SELECT_SQL = `
+  SELECT d.maDH, d.maKH, kh.hoTen AS tenKhachHang, kh.sdt AS sdtKhachHang,
+         d.maNV, nv.hoTen AS tenNhanVien, d.ngayDat, d.tienHang, d.diemSuDung,
+         d.tienGiamDiem, d.tongTien, d.hinhThuc, d.ghiChu, d.lyDoHuy, d.trangThai,
+         (SELECT COUNT(*) FROM CHITIETDONHANG ct WHERE ct.maDH = d.maDH) AS soMatHang
+    FROM DONHANG d
+    JOIN KHACHHANG kh ON kh.maKH = d.maKH
+    LEFT JOIN NHANVIEN nv ON nv.maNV = d.maNV`;
+const COUNT_SQL = `
+  SELECT COUNT(*) AS total
+    FROM DONHANG d
+    JOIN KHACHHANG kh ON kh.maKH = d.maKH`;
+
+const SORT_MAP = {
+  maDH: 'd.maDH',
+  ngayDat: 'd.ngayDat',
+  tongTien: 'd.tongTien',
+  trangThai: 'd.trangThai',
+};
+
+/**
+ * CN7.4 — Tra cứu / xem danh sách đơn hàng.
+ * Khách hàng chỉ được xem đơn của chính mình.
+ */
+function listDonHang(query = {}, user = null) {
+  const pagination = parsePagination(query);
+  const filter = new FilterBuilder()
+    .search(query.q, ['kh.hoTen', 'kh.sdt', 'd.maDH'])
+    .equals('d.trangThai', query.trangThai ? optionalText(query.trangThai, 30) : null)
+    .equals('d.hinhThuc', query.hinhThuc ? optionalText(query.hinhThuc, 30) : null)
+    .equals('d.maKH', query.maKH ? Number(query.maKH) : null);
+
+  if (user?.vaiTro === ROLES.CUSTOMER) {
+    filter.equals('d.maKH', user.maKH);
+  }
+  if (query.tuNgay) filter.raw('date(d.ngayDat) >= date(:tuNgay)', { tuNgay: query.tuNgay });
+  if (query.denNgay) filter.raw('date(d.ngayDat) <= date(:denNgay)', { denNgay: query.denNgay });
+
+  const orderBy = buildOrderBy(query, SORT_MAP, 'ngayDat');
+  const directionless = query.sortBy ? orderBy : 'ORDER BY d.ngayDat DESC, d.maDH DESC';
+  const { items, total } = executePaged({
+    selectSql: SELECT_SQL,
+    countSql: COUNT_SQL,
+    filter,
+    orderBy: directionless,
+    pagination,
+    runAll: db.all,
+    runGet: db.get,
+  });
+  return paginate(items, total, pagination);
+}
+
+/** CN7.4/CN7.5 — Chi tiết đơn hàng (dữ liệu đủ để in hoá đơn). */
+function getDonHang(maDH, user = null) {
+  const header = db.get(`${SELECT_SQL} WHERE d.maDH = :maDH`, { maDH });
+  if (!header) throw notFound(`Không tìm thấy đơn hàng có mã ${maDH}.`);
+  if (user?.vaiTro === ROLES.CUSTOMER && Number(header.maKH) !== Number(user.maKH)) {
+    throw notFound(`Không tìm thấy đơn hàng có mã ${maDH}.`);
+  }
+  const chiTiet = db.all(
+    `SELECT ct.maSP, sp.tenSP, l.tenLoai, ct.soLuong, ct.donGia, ct.thanhTien
+       FROM CHITIETDONHANG ct
+       JOIN SANPHAM sp ON sp.maSP = ct.maSP
+       JOIN LOAISANPHAM l ON l.maLoai = sp.maLoai
+      WHERE ct.maDH = :maDH
+      ORDER BY sp.tenSP ASC`,
+    { maDH }
+  );
+  const lichSuDiem = db.all(
+    `SELECT maLS, soDiem, loaiGD, ghiChu, ngayGD FROM LICHSUDIEM
+      WHERE maDH = :maDH ORDER BY maGD ASC`,
+    { maDH }
+  );
+  return { ...header, chiTiet, lichSuDiem };
+}
+
+/** Lấy sản phẩm kèm giá đã trừ khuyến mãi còn hiệu lực. */
+function laySanPhamDeBan(maSP) {
+  return db.get(
+    `SELECT sp.maSP, sp.tenSP, sp.gia, sp.soLuong, sp.trangThai,
+            COALESCE((
+              SELECT MAX(km.giaTriGiam)
+                FROM CTKM c
+                JOIN KHUYENMAI km ON km.maKM = c.maKM
+               WHERE c.maSP = sp.maSP
+                 AND km.trangThai = 'Đang diễn ra'
+                 AND date('now','localtime') BETWEEN km.ngayBatDau AND km.ngayKetThuc
+            ), 0) AS giamGia
+       FROM SANPHAM sp WHERE sp.maSP = :maSP`,
+    { maSP }
+  );
+}
+
+/**
+ * Kiểm tra giỏ hàng và tính tiền.
+ * @returns {{dongHang: Array<{maSP:number,soLuong:number,donGia:number,thanhTien:number}>, tienHang:number}}
+ */
+function chuanHoaGioHang(gioHangRaw, { kiemTraTonKho }) {
+  const danhSach = asArray(gioHangRaw);
+  if (danhSach.length === 0) throw badRequest('Đơn hàng phải có ít nhất một sản phẩm.');
+
+  /** @type {Map<number, number>} */
+  const gom = new Map();
+  danhSach.forEach((dong, index) => {
+    const maSP = requiredInt(dong.maSP, `Mã sản phẩm dòng ${index + 1}`, 1);
+    const soLuong = requiredInt(dong.soLuong, `Số lượng dòng ${index + 1}`, 1);
+    gom.set(maSP, (gom.get(maSP) ?? 0) + soLuong);
+  });
+
+  const dongHang = [];
+  let tienHang = 0;
+  gom.forEach((soLuong, maSP) => {
+    const sanPham = laySanPhamDeBan(maSP);
+    if (!sanPham) throw badRequest(`Sản phẩm có mã ${maSP} không tồn tại.`);
+    if (sanPham.trangThai !== 'Đang bán') {
+      throw conflict(`Sản phẩm "${sanPham.tenSP}" hiện đang ở trạng thái "${sanPham.trangThai}", không thể đặt.`);
+    }
+    if (kiemTraTonKho && Number(sanPham.soLuong) < soLuong) {
+      throw conflict(
+        `Sản phẩm "${sanPham.tenSP}" chỉ còn ${sanPham.soLuong} trong kho, không đủ ${soLuong}.`
+      );
+    }
+    const donGia = Math.max(0, Number(sanPham.gia) - Number(sanPham.giamGia));
+    const thanhTien = donGia * soLuong;
+    tienHang += thanhTien;
+    dongHang.push({ maSP, soLuong, donGia, thanhTien });
+  });
+  return { dongHang, tienHang };
+}
+
+/**
+ * CN7.1 — Tạo giỏ hàng / đặt hàng.
+ * @param {object} payload { maKH, chiTiet, diemSuDung, hinhThuc, ghiChu, maNV }
+ * @param {object|null} user người đặt (khách hàng hoặc nhân viên)
+ */
+function createDonHang(payload, user = null) {
+  const laKhachHang = user?.vaiTro === ROLES.CUSTOMER;
+  const maKH = laKhachHang ? Number(user.maKH) : requiredInt(payload.maKH, 'Khách hàng', 1);
+
+  const khachHang = db.get(
